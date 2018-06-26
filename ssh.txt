@@ -1,0 +1,232 @@
+对于超过10台以上的linux服务器，就需要考虑如何进行批量管理了。
+ 
+    我了解的通常的方法有以下几种：
+ 
+    一：在linux系统下，编写except脚本，通过ssh远程执行命令、上传下载文件等。
+ 
+    二：使用SecureCRT的ChatWindow功能批量发送相同命令到某一批服务器。
+ 
+    三：用puppy等工具管理。
+ 
+    其中方法一没什么问题，被管理服务器也不需要安装任何特殊程序或服务，但就是需要在linux下进行操作，日常办公PC可能大多数装的是Windows，这样可能要在虚拟机中进行操作，不太方便。
+ 
+    方法二：仅适用于对为数不多的服务器进行少量命令操作。
+ 
+    方法三：需要安装客户端和管理工具，配置比较麻烦但功能强大。
+ 
+    本文介绍的方法，类似于方法一，但使用的是Python脚本，得益于Python跨平台性，所有操作可在Windows下进行。
+ 
+    本文介绍的方法大概适合大于10台小于100台的情况，因为本文的方法仅涉及远程执行命令，上传、下载文件等。
+ 
+    一、环境准备：
+ 
+    1，安装Python，去https://www.python.org/downloads/windows/下载Python2的最新版本，
+ 
+       如：32位：https://www.python.org/ftp/python/2.7.6/python-2.7.6.msi
+ 
+             64位：https://www.python.org/ftp/python/2.7.6/python-2.7.6.amd64.msi
+ 
+       记得在系统-属性-高级-环境变量-PATH中，添加Python的安装路径。
+ 
+    2，安装pycrypto模块，去http://www.voidspace.org.uk/python/modules.shtml#pycrypto下载。
+ 
+       如：32位：http://www.voidspace.org.uk/downloads/pycrypto26/pycrypto-2.6.win32-py2.7.exe
+ 
+             64位：http://www.voidspace.org.uk/downloads/pycrypto26/pycrypto-2.6.win-amd64-py2.7.exe
+ 
+    3，安装paramiko模块，下载地址：http://pan.baidu.com/s/1sjNNNfZ，解压后，在DOS窗口下进入目录，输入
+ 
+            setup.py install回车，执行安装。
+ 
+    4，打开CMD，输入python回车，在提示符下输入import paramiko，如果没有错误提示，就说明环境已经准备好了。
+ 
+    二、在远程服务器上批量执行命令：
+ 
+    1、准备服务器列表文件server_list.txt
+ 
+       按“服务器IP+空格+登录用户名+登录密码”格式录入服务器信息到serverlist.txt，如:
+ 
+       192.168.1.101 root 123456
+ 
+       192.168.1.102 root 123456
+ 
+       ......
+ 
+    2、准备要执行的命令列表文件cmd_list.txt，每行一个命令，如：
+ 
+       ls -l /root
+ 
+       ifconfig
+ 
+       ......
+ 
+    3、新建文本文件pyssh.txt，改名为pyssh.py，然后右键Edit with IDLE，输入以下内容：
+ 
+
+
+
+
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+import paramiko
+import fileinput
+     
+if __name__=='__main__':
+    #读取服务器列表文件
+    serverlist = open("server_list.txt", "r")
+         
+    for line in serverlist:
+        #取IP、用户名、密码
+        ip=line.split()[0]
+        username=line.split()[1]
+        password=line.split()[2]
+             
+        #建立连接
+        s=paramiko.SSHClient()
+        s.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        s.connect(hostname = ip,username = username, password = password)
+     
+        #打印分割符
+        print('    Server : '+ip)
+     
+        #读取命令文件
+        cmdlist = open("cmd_list.txt","r")
+        #执行命令
+        for line in cmdlist:
+            print('        '+line)
+            stdin,stdout,stderr=s.exec_command(line)
+            print stdout.read()
+                 
+        #关闭连接
+        s.close()
+            
+    serverlist.close() 
+
+
+ 
+ 
+   4、把以上3个文件放到一个目录，DOS到这个目录执行pyssh.py就可以看到执行结果了。
+ 
+    三、上传文件
+ 
+    1、准备好要上传的文件，放到一个空的专用的目录里。
+ 
+    2、准备好要上传的服务器列表Server_list.txt。
+ 
+    3，编写以下内容存为pyupload.py
+ 
+
+
+
+
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+    
+import paramiko,datetime,os,sys,fileinput
+    
+if __name__=='__main__':
+    #读取服务器列表文件
+    serverlist = open("server_list.txt", "r")
+        
+    for line in serverlist:
+        #取IP、用户名、密码
+        ip=line.split()[0]
+        username=line.split()[1]
+        password=line.split()[2]
+            
+        port=22
+        #本地路径
+        l_dir='D:\\upload\\'
+        #远程路径
+        r_dir='/tmp/'
+            
+        #打印分割符
+        print('    Server : '+ip)
+    
+        #建立连接
+        t=paramiko.Transport((ip,int(port)))
+        t.connect(username=username,password=password)
+        sftp=paramiko.SFTPClient.from_transport(t)
+    
+        #分别上传文件
+        files=os.listdir(l_dir)
+        for f in files:
+            #本地路径+文件名
+            l_file=os.path.join(l_dir,f)
+            #远程路径+文件名
+            r_file=os.path.join(r_dir,f)
+            print('        '+l_file+' ---> '+r_file)
+            #上传
+            sftp.put(l_file,r_file)         
+        t.close()     
+    serverlist.close() 
+
+
+ 
+ 
+ 
+ 
+   3、修改上面代码的本地路径，把pyupload.py和server_list.txt文件放到一个目录，DOS到这个目录执行pyupload.py即可批量上传文件到批量服务器。注意远程服务器的路径必需存在，否则会报错。
+ 
+    四、下载文件：
+ 
+    1，建立一下空的专用的下载目录download。
+ 
+    2、准备好要上传的服务器列表Server_list.txt。
+ 
+    3、编写文件file_list.txt，每行一个要下载的远程服务器文件的完整路径，如：/root/instll.log
+ 
+    4，编写以下内容存为pydownload.py
+ 
+
+
+
+
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+    
+import paramiko,datetime,os,sys,fileinput
+    
+if __name__=='__main__':
+    #读取服务器列表文件
+    serverlist = open("server_list.txt", "r")
+            
+    for line in serverlist:
+        #取IP、用户名、密码
+        ip=line.split()[0]
+        username=line.split()[1]
+        password=line.split()[2]
+        port=22
+    
+        filelist = open("D:\\download\\file_list.txt","r")
+    
+        #本地路径
+        l_dir='D:\\download\\download\\'
+        os.chdir(l_dir)
+            
+        if os.path.exists(ip) != True:
+            os.mkdir(ip)
+        l_dir=os.path.join(l_dir,ip)
+            
+        print('    Server : '+ip)
+        #建立连接
+        t=paramiko.Transport((ip,int(port)))
+        t.connect(username=username,password=password)
+        sftp=paramiko.SFTPClient.from_transport(t)
+        #分别下载文件
+        for r_file in filelist:
+            r_file=r_file.strip('\n')
+            l_file=os.path.join(l_dir,os.path.basename(r_file))
+            print('        '+r_file+' ---> '+l_file)
+            #下载
+            sftp.get(r_file,l_file)
+        t.close()
+    
+    serverlist.close()
+    filelist.close() 
+
+
+ 
+ 
+    5、修改上面代码的本地路径，把pydownload.py和server_list.txt文件放到一个目录，DOS到这个目录执行pyupload.py即可批量下载文件到本地，且每个服务器建立一个目录。
+
